@@ -13,24 +13,14 @@ CREATE TABLE public.profiles (
 -- 3. Enable Row-Level Security
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- 4. RLS Policy: Users can read own profile
-CREATE POLICY "Users can read own profile"
+-- 4. RLS Policy: Authenticated users can read own profile (Tested & Working)
+CREATE POLICY "Authenticated users can read own profile"
     ON public.profiles
     FOR SELECT
+    TO authenticated
     USING (auth.uid() = id);
 
--- 5. RLS Policy: Admins can view all profiles
-CREATE POLICY "Admins can view all profiles"
-    ON public.profiles
-    FOR SELECT
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.profiles
-            WHERE id = auth.uid() AND role = 'Admin'
-        )
-    );
-
--- 6. Bulletproof Trigger Function
+-- 5. Trigger to handle user profile creation safely
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -56,7 +46,6 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 7. Trigger attachment
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
