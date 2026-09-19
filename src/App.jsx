@@ -1,14 +1,17 @@
+import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/Login/LoginPage';
 import MenuPage from './pages/Menu/MenuPage';
+import TableManagementPage from './pages/Tables/TableManagementPage';
 import { 
   Loader2, Utensils, LayoutDashboard, BookOpen, Star, 
-  Truck, BarChart2, Settings, LogOut 
+  Truck, BarChart2, Settings, LogOut, Armchair 
 } from 'lucide-react';
 
 function DashboardRouter() {
   const { user, profile, loading, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState('menu'); // 'menu' | 'tables'
 
   if (loading) {
     return (
@@ -22,7 +25,6 @@ function DashboardRouter() {
 
   if (profile?.role === 'Admin') {
     return (
-      // Warm modern background
       <div className="min-h-screen bg-[#FDF7F2] flex p-3 md:p-6 gap-6">
         
         {/* Left White Sidebar */}
@@ -41,33 +43,53 @@ function DashboardRouter() {
 
             {/* Sidebar Navigation */}
             <nav className="space-y-1 text-xs font-semibold">
-              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-400 hover:text-neutral-700 cursor-not-allowed">
+              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-300 cursor-not-allowed">
                 <LayoutDashboard className="w-4 h-4" />
                 <span>Overview</span>
               </div>
 
-              {/* Active Menu Tab */}
-              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl bg-orange-50 text-orange-600 font-bold">
+              {/* Menu Tab */}
+              <button
+                onClick={() => setActiveTab('menu')}
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
+                  activeTab === 'menu'
+                    ? 'bg-orange-50 text-orange-600 font-bold'
+                    : 'text-neutral-500 hover:text-neutral-800'
+                }`}
+              >
                 <BookOpen className="w-4 h-4" />
                 <span>Menu</span>
-              </div>
+              </button>
 
-              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-400 hover:text-neutral-700 cursor-not-allowed">
+              {/* Tables & Floor Tab */}
+              <button
+                onClick={() => setActiveTab('tables')}
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
+                  activeTab === 'tables'
+                    ? 'bg-orange-50 text-orange-600 font-bold'
+                    : 'text-neutral-500 hover:text-neutral-800'
+                }`}
+              >
+                <Armchair className="w-4 h-4" />
+                <span>Floor & Tables</span>
+              </button>
+
+              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-300 cursor-not-allowed">
                 <Star className="w-4 h-4" />
                 <span>Rating & reviews</span>
               </div>
 
-              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-400 hover:text-neutral-700 cursor-not-allowed">
+              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-300 cursor-not-allowed">
                 <Truck className="w-4 h-4" />
                 <span>Delivery</span>
               </div>
 
-              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-400 hover:text-neutral-700 cursor-not-allowed">
+              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-300 cursor-not-allowed">
                 <BarChart2 className="w-4 h-4" />
                 <span>Analytics</span>
               </div>
 
-              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-400 hover:text-neutral-700 cursor-not-allowed">
+              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-300 cursor-not-allowed">
                 <Settings className="w-4 h-4" />
                 <span>Settings</span>
               </div>
@@ -92,7 +114,7 @@ function DashboardRouter() {
 
         {/* Main Canvas */}
         <main className="flex-1 min-w-0 bg-transparent">
-          <MenuPage />
+          {activeTab === 'menu' ? <MenuPage /> : <TableManagementPage />}
         </main>
       </div>
     );
