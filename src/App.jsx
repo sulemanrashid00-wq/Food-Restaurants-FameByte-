@@ -4,14 +4,15 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/Login/LoginPage';
 import MenuPage from './pages/Menu/MenuPage';
 import TableManagementPage from './pages/Tables/TableManagementPage';
+import NewOrderPage from './pages/Orders/NewOrderPage';
 import { 
   Loader2, Utensils, LayoutDashboard, BookOpen, Star, 
-  Truck, BarChart2, Settings, LogOut, Armchair 
+  Truck, BarChart2, Settings, LogOut, Armchair, ShoppingBag 
 } from 'lucide-react';
 
 function DashboardRouter() {
   const { user, profile, loading, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('menu'); // 'menu' | 'tables'
+  const [activeTab, setActiveTab] = useState('menu'); // 'menu' | 'tables' | 'new-order'
 
   if (loading) {
     return (
@@ -74,6 +75,19 @@ function DashboardRouter() {
                 <span>Floor & Tables</span>
               </button>
 
+              {/* New POS Order Tab */}
+              <button
+                onClick={() => setActiveTab('new-order')}
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
+                  activeTab === 'new-order'
+                    ? 'bg-orange-50 text-orange-600 font-bold'
+                    : 'text-neutral-500 hover:text-neutral-800'
+                }`}
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span>New POS Order</span>
+              </button>
+
               <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-300 cursor-not-allowed">
                 <Star className="w-4 h-4" />
                 <span>Rating & reviews</span>
@@ -114,7 +128,9 @@ function DashboardRouter() {
 
         {/* Main Canvas */}
         <main className="flex-1 min-w-0 bg-transparent">
-          {activeTab === 'menu' ? <MenuPage /> : <TableManagementPage />}
+          {activeTab === 'menu' && <MenuPage />}
+          {activeTab === 'tables' && <TableManagementPage />}
+          {activeTab === 'new-order' && <NewOrderPage />}
         </main>
       </div>
     );
