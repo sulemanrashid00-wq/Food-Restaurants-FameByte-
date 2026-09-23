@@ -6,6 +6,7 @@ import MenuPage from './pages/Menu/MenuPage';
 import TableManagementPage from './pages/Tables/TableManagementPage';
 import NewOrderPage from './pages/Orders/NewOrderPage';
 import OrderListPage from './pages/Orders/OrderListPage';
+import DashboardPage from './pages/Dashboard/DashboardPage';
 import { 
   Loader2, Utensils, LayoutDashboard, BookOpen, Star, 
   Truck, BarChart2, Settings, LogOut, Armchair, ShoppingBag, Clock
@@ -13,7 +14,7 @@ import {
 
 function DashboardRouter() {
   const { user, profile, loading, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('menu'); // 'menu' | 'tables' | 'new-order' | 'orders-list'
+  const [activeTab, setActiveTab] = useState('overview'); // Default tab set to Overview/Analytics
 
   if (loading) {
     return (
@@ -45,10 +46,18 @@ function DashboardRouter() {
 
             {/* Sidebar Navigation */}
             <nav className="space-y-1 text-xs font-semibold">
-              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-300 cursor-not-allowed">
+              {/* Overview & Analytics Tab */}
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
+                  activeTab === 'overview'
+                    ? 'bg-orange-50 text-orange-600 font-bold'
+                    : 'text-neutral-500 hover:text-neutral-800'
+                }`}
+              >
                 <LayoutDashboard className="w-4 h-4" />
-                <span>Overview</span>
-              </div>
+                <span>Overview & Analytics</span>
+              </button>
 
               {/* Menu Tab */}
               <button
@@ -89,7 +98,7 @@ function DashboardRouter() {
                 <span>New POS Order</span>
               </button>
 
-              {/* Live Kitchen Tickets Tab (Day 7) */}
+              {/* Live Kitchen Tickets Tab */}
               <button
                 onClick={() => setActiveTab('orders-list')}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
@@ -112,10 +121,17 @@ function DashboardRouter() {
                 <span>Delivery</span>
               </div>
 
-              <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-300 cursor-not-allowed">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
+                  activeTab === 'overview'
+                    ? 'bg-orange-50 text-orange-600 font-bold'
+                    : 'text-neutral-500 hover:text-neutral-800'
+                }`}
+              >
                 <BarChart2 className="w-4 h-4" />
                 <span>Analytics</span>
-              </div>
+              </button>
 
               <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-300 cursor-not-allowed">
                 <Settings className="w-4 h-4" />
@@ -142,6 +158,7 @@ function DashboardRouter() {
 
         {/* Main Canvas */}
         <main className="flex-1 min-w-0 bg-transparent">
+          {activeTab === 'overview' && <DashboardPage />}
           {activeTab === 'menu' && <MenuPage />}
           {activeTab === 'tables' && <TableManagementPage />}
           {activeTab === 'new-order' && <NewOrderPage />}
