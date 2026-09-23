@@ -5,14 +5,15 @@ import LoginPage from './pages/Login/LoginPage';
 import MenuPage from './pages/Menu/MenuPage';
 import TableManagementPage from './pages/Tables/TableManagementPage';
 import NewOrderPage from './pages/Orders/NewOrderPage';
+import OrderListPage from './pages/Orders/OrderListPage';
 import { 
   Loader2, Utensils, LayoutDashboard, BookOpen, Star, 
-  Truck, BarChart2, Settings, LogOut, Armchair, ShoppingBag 
+  Truck, BarChart2, Settings, LogOut, Armchair, ShoppingBag, Clock
 } from 'lucide-react';
 
 function DashboardRouter() {
   const { user, profile, loading, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('menu'); // 'menu' | 'tables' | 'new-order'
+  const [activeTab, setActiveTab] = useState('menu'); // 'menu' | 'tables' | 'new-order' | 'orders-list'
 
   if (loading) {
     return (
@@ -88,6 +89,19 @@ function DashboardRouter() {
                 <span>New POS Order</span>
               </button>
 
+              {/* Live Kitchen Tickets Tab (Day 7) */}
+              <button
+                onClick={() => setActiveTab('orders-list')}
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
+                  activeTab === 'orders-list'
+                    ? 'bg-orange-50 text-orange-600 font-bold'
+                    : 'text-neutral-500 hover:text-neutral-800'
+                }`}
+              >
+                <Clock className="w-4 h-4" />
+                <span>Live Kitchen Tickets</span>
+              </button>
+
               <div className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-neutral-300 cursor-not-allowed">
                 <Star className="w-4 h-4" />
                 <span>Rating & reviews</span>
@@ -131,6 +145,7 @@ function DashboardRouter() {
           {activeTab === 'menu' && <MenuPage />}
           {activeTab === 'tables' && <TableManagementPage />}
           {activeTab === 'new-order' && <NewOrderPage />}
+          {activeTab === 'orders-list' && <OrderListPage />}
         </main>
       </div>
     );
