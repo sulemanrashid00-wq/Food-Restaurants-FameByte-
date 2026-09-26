@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { 
-  BarChart2, TrendingUp, DollarSign, ShoppingBag, 
-  CheckCircle, Loader2, Calendar, RefreshCw, PieChart, Layers 
+  BarChart2, TrendingUp, DollarSign, 
+  CheckCircle, Loader2, Calendar, RefreshCw, Layers 
 } from 'lucide-react';
 
 export default function AnalyticsPage() {
+  const [dateRange, setDateRange] = useState('all'); // 'today', 'week', 'month', 'all'
   const [metrics, setMetrics] = useState({
     totalSales: 0,
     totalTransactions: 0,
@@ -18,12 +19,24 @@ export default function AnalyticsPage() {
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchDeepAnalytics = async () => {
+    setLoading(true);
     try {
-      // Fetch all orders
-      const { data: orders, error: ordersErr } = await supabase
-        .from('orders')
-        .select('total_amount, status, created_at');
+      let query = supabase.from('orders').select('total_amount, status, created_at');
 
+      // Date Range Filtering Logic
+      const now = new Date();
+      if (dateRange === 'today') {
+        const startOfDay = new Date(now.setHours(0, 0, 0, 0)).toISOString();
+        query = query.gte('created_at', startOfDay);
+      } else if (dateRange === 'week') {
+        const startOfWeek = new Date(now.setDate(now.getDate() - 7)).toISOString();
+        query = query.gte('created_at', startOfWeek);
+      } else if (dateRange === 'month') {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        query = query.gte('created_at', startOfMonth);
+      }
+
+      const { data: orders, error: ordersErr } = await query;
       if (ordersErr) throw ordersErr;
 
       const totalSales = orders?.reduce((acc, curr) => acc + (Number(curr.total_amount) || 0), 0) || 0;
@@ -40,8 +53,8 @@ export default function AnalyticsPage() {
         avgBasketSize
       });
 
-      // Fetch menu items category breakdown
-      const { data: itemsData, error: itemsErr } = await supabase
+      // Category breakdown
+      const { data: itemsData } = await supabase
         .from('order_items')
         .select(`
           quantity,
@@ -49,22 +62,19 @@ export default function AnalyticsPage() {
           menu_items (category)
         `);
 
-      if (!itemsErr && itemsData) {
+      if (itemsData) {
         const catMap = {};
         itemsData.forEach(row => {
           const cat = row.menu_items?.category || 'General';
-          if (!catMap[cat]) {
-            catMap[cat] = { category: cat, totalQty: 0, totalRev: 0 };
-          }
+          if (!catMap[cat]) catMap[cat] = { category: cat, totalQty: 0, totalRev: 0 };
           catMap[cat].totalQty += row.quantity || 0;
           catMap[cat].totalRev += Number(row.subtotal) || 0;
         });
-
         setCategorySales(Object.values(catMap));
       }
 
     } catch (err) {
-      console.error('Deep Analytics Error:', err.message);
+      console.error('Analytics Error:', err.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -73,131 +83,68 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     fetchDeepAnalytics();
-
-    const channel = supabase
-      .channel('deep-analytics-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        fetchDeepAnalytics();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchDeepAnalytics();
-  };
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
-        <Loader2 className="w-9 h-9 animate-spin text-orange-500" />
-        <p className="text-xs font-semibold text-neutral-400">Compiling Financial Analytics...</p>
-      </div>
-    );
-  }
+  }, [dateRange]);
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
+      {/* Header & Date Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-black text-neutral-900 tracking-tight">Business Intelligence & Reports</h2>
-            <span className="bg-orange-50 text-orange-700 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-orange-200">
-              PRO ANALYTICS
-            </span>
-          </div>
-          <p className="text-xs font-medium text-neutral-500 mt-0.5">Comprehensive financial summary, category performance, and sales breakdown.</p>
+          <h2 className="text-2xl font-black text-neutral-900 tracking-tight">Business Intelligence & Reports</h2>
+          <p className="text-xs font-medium text-neutral-500 mt-0.5">Filter sales performance and revenue analytics by timeframe.</p>
         </div>
 
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="flex items-center gap-2 bg-white border border-neutral-200/90 hover:bg-neutral-50 text-neutral-700 px-4 py-2.5 rounded-2xl text-xs font-bold shadow-2xs transition cursor-pointer w-fit"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-orange-500' : ''}`} />
-          <span>Refresh Reports</span>
-        </button>
-      </div>
-
-      {/* Detailed Financial Stats Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-neutral-400">
-            <span className="text-xs font-bold uppercase tracking-wider">Gross Revenue</span>
-            <DollarSign className="w-5 h-5 text-emerald-500" />
-          </div>
-          <h3 className="text-3xl font-black text-neutral-900 font-mono">
-            Rs. {metrics.totalSales.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-          </h3>
-          <p className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Lifetime POS Earnings</span>
-          </p>
-        </div>
-
-        <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-neutral-400">
-            <span className="text-xs font-bold uppercase tracking-wider">Average Basket Size</span>
-            <BarChart2 className="w-5 h-5 text-orange-500" />
-          </div>
-          <h3 className="text-3xl font-black text-neutral-900 font-mono">
-            Rs. {metrics.avgBasketSize.toFixed(2)}
-          </h3>
-          <p className="text-[11px] font-semibold text-neutral-400">
-            Per transaction average ticket value
-          </p>
-        </div>
-
-        <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-neutral-400">
-            <span className="text-xs font-bold uppercase tracking-wider">Order Conversion</span>
-            <CheckCircle className="w-5 h-5 text-blue-500" />
-          </div>
-          <h3 className="text-3xl font-black text-neutral-900">
-            {metrics.completedOrders} <span className="text-sm font-normal text-neutral-400">/ {metrics.totalTransactions}</span>
-          </h3>
-          <p className="text-[11px] font-semibold text-blue-600">
-            {metrics.totalTransactions > 0 ? ((metrics.completedOrders / metrics.totalTransactions) * 100).toFixed(0) : 0}% successful delivery rate
-          </p>
+        {/* Date Filter Pills */}
+        <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-neutral-200/80 shadow-2xs">
+          {[
+            { id: 'today', label: 'Today' },
+            { id: 'week', label: 'This Week' },
+            { id: 'month', label: 'This Month' },
+            { id: 'all', label: 'All Time' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setDateRange(tab.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                dateRange === tab.id 
+                  ? 'bg-orange-500 text-white shadow-xs' 
+                  : 'text-neutral-600 hover:bg-neutral-100'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Category Performance Breakdown */}
-      <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-4">
-        <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-orange-500" />
-            <h3 className="text-sm font-extrabold text-neutral-900">Menu Category Performance Breakdown</h3>
-          </div>
-          <span className="text-[10px] font-bold text-neutral-400">Revenue & Volume</span>
+      {/* Metrics Row */}
+      {loading ? (
+        <div className="flex justify-center items-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
         </div>
-
-        {categorySales.length === 0 ? (
-          <p className="text-xs text-neutral-400 text-center py-10 font-medium">No category sales metrics available yet.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {categorySales.map((cat) => (
-              <div key={cat.category} className="bg-neutral-50 p-4 rounded-2xl border border-neutral-100 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold text-neutral-800">{cat.category}</span>
-                  <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
-                    {cat.totalQty} units
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between pt-2 border-t border-neutral-200/60">
-                  <span className="text-[10px] text-neutral-400 font-semibold uppercase">Category Sales</span>
-                  <span className="text-sm font-black font-mono text-neutral-900">Rs. {cat.totalRev}</span>
-                </div>
-              </div>
-            ))}
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-2">
+            <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Gross Revenue</span>
+            <h3 className="text-3xl font-black text-neutral-900 font-mono">Rs. {metrics.totalSales.toFixed(2)}</h3>
+            <p className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
+              <TrendingUp className="w-3.5 h-3.5" /> Filtered Period Earnings
+            </p>
           </div>
-        )}
-      </div>
+
+          <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-2">
+            <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Total Orders</span>
+            <h3 className="text-3xl font-black text-neutral-900">{metrics.totalTransactions}</h3>
+            <p className="text-[11px] font-semibold text-neutral-400">Processed Transactions</p>
+          </div>
+
+          <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-2">
+            <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Average Order Ticket</span>
+            <h3 className="text-3xl font-black text-neutral-900 font-mono">Rs. {metrics.avgBasketSize.toFixed(2)}</h3>
+            <p className="text-[11px] font-semibold text-blue-600">Per Customer Spent</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

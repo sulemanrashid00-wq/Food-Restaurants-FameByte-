@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { 
   Clock, CheckCircle2, RefreshCw, Loader2, User, Armchair,
-  Printer, X, Utensils, Search
+  Printer, Utensils, Search
 } from 'lucide-react';
+import ReceiptModal from '../../components/Receipt/ReceiptModal';
 
 const STATUSES = ['All', 'New', 'Preparing', 'Ready', 'Served', 'Cancelled'];
 
@@ -91,7 +92,7 @@ export default function OrderListPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-12">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -171,6 +172,7 @@ export default function OrderListPage() {
                     o.status === 'New' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                     o.status === 'Preparing' ? 'bg-orange-50 text-orange-700 border-orange-200' :
                     o.status === 'Ready' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                    o.status === 'Served' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                     'bg-neutral-100 text-neutral-600 border-neutral-200'
                   }`}>
                     {o.status}
@@ -200,17 +202,18 @@ export default function OrderListPage() {
               <div className="pt-3 border-t border-neutral-100 flex items-center justify-between gap-2">
                 <button
                   onClick={() => setReceiptOrder(o)}
-                  className="p-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl transition cursor-pointer"
+                  className="p-2.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold"
                   title="Print Thermal Receipt"
                 >
-                  <Printer className="w-4 h-4" />
+                  <Printer className="w-4 h-4 text-orange-500" />
+                  <span>Receipt</span>
                 </button>
 
                 <select
                   value={o.status}
                   disabled={updatingId === o.id}
                   onChange={(e) => handleStatusUpdate(o, e.target.value)}
-                  className="text-xs bg-neutral-50 border border-neutral-200 rounded-xl px-2.5 py-1.5 font-bold text-neutral-800 focus:outline-none cursor-pointer"
+                  className="text-xs bg-neutral-50 border border-neutral-200 rounded-xl px-2.5 py-2 font-bold text-neutral-800 focus:outline-none cursor-pointer"
                 >
                   <option value="New">New</option>
                   <option value="Preparing">Preparing</option>
@@ -224,53 +227,12 @@ export default function OrderListPage() {
         </div>
       )}
 
-      {/* Thermal Receipt Print Modal */}
+      {/* Integrated Thermal Receipt Component */}
       {receiptOrder && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl relative font-mono text-xs">
-            <button 
-              onClick={() => setReceiptOrder(null)}
-              className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-800 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="text-center pb-4 border-b border-dashed border-neutral-300">
-              <h3 className="text-base font-black uppercase text-neutral-900">Delicious POS</h3>
-              <p className="text-[10px] text-neutral-500">FameByte Studio - Official Receipt</p>
-              <p className="text-[10px] text-neutral-400 mt-1">{new Date(receiptOrder.created_at).toLocaleString()}</p>
-            </div>
-
-            <div className="py-3 border-b border-dashed border-neutral-300 space-y-1">
-              <p><strong>Customer:</strong> {receiptOrder.customer_name || 'Guest'}</p>
-              <p><strong>Location:</strong> {receiptOrder.tables?.table_number ? `Table ${receiptOrder.tables.table_number}` : 'Takeaway'}</p>
-              <p><strong>Type:</strong> {receiptOrder.order_type || 'Dine-In'}</p>
-            </div>
-
-            <div className="py-3 border-b border-dashed border-neutral-300 space-y-1.5">
-              {receiptOrder.order_items?.map((it) => (
-                <div key={it.id} className="flex justify-between">
-                  <span>{it.quantity}x {it.menu_items?.name}</span>
-                  <span>Rs. {it.subtotal}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-3 space-y-1 text-right">
-              <p>Subtotal: Rs. {receiptOrder.subtotal || receiptOrder.total_amount}</p>
-              <p>Tax (5%): Rs. {receiptOrder.tax || 0}</p>
-              <p className="text-sm font-black text-neutral-900 pt-1 border-t border-neutral-200">Total: Rs. {receiptOrder.total_amount}</p>
-            </div>
-
-            <button
-              onClick={() => window.print()}
-              className="mt-5 w-full bg-orange-500 hover:bg-orange-600 text-white font-sans font-bold py-2.5 rounded-2xl flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-orange-500/20"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Print Thermal Receipt</span>
-            </button>
-          </div>
-        </div>
+        <ReceiptModal 
+          order={receiptOrder} 
+          onClose={() => setReceiptOrder(null)} 
+        />
       )}
     </div>
   );
