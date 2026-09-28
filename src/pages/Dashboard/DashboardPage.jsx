@@ -28,11 +28,14 @@ export default function DashboardPage() {
 
       if (ordersError) throw ordersError;
 
-      const totalRevenue = orders?.reduce((acc, curr) => acc + (Number(curr.total_amount) || 0), 0) || 0;
+      // VIP FIX: Sirf 'Served' orders ka revenue add hoga, Cancelled ka amount nahi aayega!
+      const validServedOrders = orders?.filter(o => o.status === 'Served') || [];
+      const totalRevenue = validServedOrders.reduce((acc, curr) => acc + (Number(curr.total_amount) || 0), 0);
+      
       const totalOrders = orders?.length || 0;
-      const servedOrders = orders?.filter(o => o.status === 'Served').length || 0;
+      const servedOrders = validServedOrders.length;
       const pendingOrders = orders?.filter(o => o.status === 'New' || o.status === 'Preparing').length || 0;
-      const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+      const averageOrderValue = servedOrders > 0 ? totalRevenue / servedOrders : 0;
 
       setStats({
         totalRevenue,
@@ -44,14 +47,23 @@ export default function DashboardPage() {
 
       setRecentOrders(orders?.slice(0, 5) || []);
 
-      // 2. Fetch Top Selling Items Aggregation
+      // 2. Fetch Top Selling Items Aggregation (Excluding Cancelled Orders)
       const { data: orderItems, error: itemsError } = await supabase
         .from('order_items')
-        .select('quantity, subtotal, menu_items(name)');
+        .select(`
+          quantity, 
+          subtotal, 
+          menu_items(name),
+          orders(status)
+        `);
 
       if (!itemsError && orderItems) {
         const itemMap = {};
-        orderItems.forEach(item => {
+        
+        // Filter out items of Cancelled orders
+        const validItems = orderItems.filter(item => item.orders?.status !== 'Cancelled');
+
+        validItems.forEach(item => {
           const name = item.menu_items?.name || 'Unknown Item';
           if (!itemMap[name]) {
             itemMap[name] = { name, count: 0, revenue: 0 };
@@ -262,6 +274,7 @@ export default function DashboardPage() {
                         <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
                           o.status === 'Served' ? 'bg-emerald-50 text-emerald-600' :
                           o.status === 'Preparing' ? 'bg-orange-50 text-orange-600' :
+                          o.status === 'Cancelled' ? 'bg-rose-50 text-rose-600' :
                           'bg-amber-50 text-amber-600'
                         }`}>
                           {o.status}
