@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import TableQRModal from '../../components/Tables/TableQRModal';
 import { 
   Users, Plus, Search, Loader2, X, Armchair, 
-  Sparkles, Clock, AlertCircle, ChevronDown, Check
+  Sparkles, Clock, AlertCircle, ChevronDown, QrCode
 } from 'lucide-react';
 
 const STATUS_FILTERS = ['All', 'Available', 'Occupied', 'Reserved'];
@@ -23,8 +24,11 @@ export default function TableManagementPage() {
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Modal State
+  // Modals State
   const [modalOpen, setModalOpen] = useState(false);
+  const [qrModalTable, setQrModalTable] = useState(null);
+
+  // Form Fields
   const [tableNumber, setTableNumber] = useState('');
   const [seatingCapacity, setSeatingCapacity] = useState('4');
   const [status, setStatus] = useState('Available');
@@ -280,9 +284,17 @@ export default function TableManagementPage() {
                     )}
                   </div>
 
-                  {/* Status Dropdown */}
-                  <div className="pt-3 border-t border-neutral-100 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-neutral-400">Change Status:</span>
+                  {/* Actions: Status Dropdown & QR Modal Button */}
+                  <div className="pt-3 border-t border-neutral-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => setQrModalTable(t)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-600 text-xs font-bold border border-orange-200/60 shadow-2xs transition cursor-pointer"
+                      title="View & Print Table QR Code"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>QR Card</span>
+                    </button>
+
                     <div className="relative">
                       <select
                         value={t.status}
@@ -303,7 +315,15 @@ export default function TableManagementPage() {
         </div>
       )}
 
-      {/* 4. Add Table Modal With Image URL Field */}
+      {/* 4. Table QR Modal */}
+      {qrModalTable && (
+        <TableQRModal 
+          table={qrModalTable} 
+          onClose={() => setQrModalTable(null)} 
+        />
+      )}
+
+      {/* 5. Add Table Modal With Image URL Field */}
       {modalOpen && (
         <div className="fixed inset-0 bg-neutral-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-neutral-100 w-full max-w-sm shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
