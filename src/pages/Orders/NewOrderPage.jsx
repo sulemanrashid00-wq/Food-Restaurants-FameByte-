@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { 
   ShoppingBag, Search, Plus, Minus, Trash2, 
   CreditCard, Banknote, QrCode, Split, 
-  CheckCircle2, Loader2, Armchair, User 
+  CheckCircle2, Loader2 
 } from 'lucide-react';
 
 export default function NewOrderPage() {
@@ -14,47 +14,52 @@ export default function NewOrderPage() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Checkout & VIP Day 10 States
+  // Checkout States
   const [selectedTable, setSelectedTable] = useState('');
   const [customerName, setCustomerName] = useState('');
-  const [orderType, setOrderType] = useState('Dine-In'); // Dine-In, Takeaway
-  const [paymentMethod, setPaymentMethod] = useState('Cash'); // Cash, Card, QR
+  const [orderType, setOrderType] = useState('Dine-In');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [splitCount, setSplitCount] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
-
-  const fetchInitialData = async () => {
-    setLoading(true);
+  // Parallel Fast Fetch
+  const fetchInitialData = useCallback(async () => {
     try {
-      // 1. Fetch Menu Items
-      const { data: menuData } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('is_available', true);
-      setMenuItems(menuData || []);
+      const [menuRes, tablesRes] = await Promise.all([
+        supabase
+          .from('menu_items')
+          .select('*')
+          .eq('is_available', true)
+          .order('name'),
+        supabase
+          .from('tables')
+          .select('*')
+          .order('table_number')
+      ]);
 
-      // Extract unique categories
-      const cats = ['All', ...new Set(menuData?.map(item => item.category).filter(Boolean))];
-      setCategories(cats);
+      if (menuRes.error) throw menuRes.error;
+      if (tablesRes.error) throw tablesRes.error;
 
-      // 2. Fetch Available Tables
-      const { data: tableData } = await supabase
-        .from('tables')
-        .select('*')
-        .order('table_number');
-      setTables(tableData || []);
+      const menuData = menuRes.data || [];
+      setMenuItems(menuData);
+
+      const uniqueCats = ['All', ...new Set(menuData.map(item => item.category).filter(Boolean))];
+      setCategories(uniqueCats);
+
+      setTables(tablesRes.data || []);
     } catch (err) {
-      console.error('Data load error:', err.message);
+      console.error('Fast fetch error:', err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Cart operations
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
+
+  // Cart Handlers
   const addToCart = (item) => {
     setCart(prev => {
       const existing = prev.find(i => i.id === item.id);
@@ -68,8 +73,8 @@ export default function NewOrderPage() {
   const updateQuantity = (id, delta) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
-        const newQty = item.quantity + delta;
-        return newQty > 0 ? { ...item, quantity: newQty } : null;
+        const nextQty = item.quantity + delta;
+        return nextQty > 0 ? { ...item, quantity: nextQty } : null;
       }
       return item;
     }).filter(Boolean));
@@ -79,24 +84,23 @@ export default function NewOrderPage() {
     setCart(prev => prev.filter(item => item.id !== id));
   };
 
-  // Financial calculations
+  // Math Calculations
   const subtotal = cart.reduce((sum, item) => sum + (Number(item.price) * item.quantity), 0);
-  const tax = subtotal * 0.05; // 5% GST
+  const tax = subtotal * 0.05;
   const netTotal = subtotal + tax;
   const splitAmount = splitCount > 1 ? (netTotal / splitCount) : netTotal;
 
-  // Submit Order
+  // Place Order Action
   const handlePlaceOrder = async () => {
     if (cart.length === 0) return alert('Cart is empty!');
     if (orderType === 'Dine-In' && !selectedTable) return alert('Please select a table for Dine-In!');
 
     setSubmitting(true);
     try {
-      // 1. Insert Order
       const { data: orderData, error: orderErr } = await supabase
         .from('orders')
         .insert([{
-          customer_name: customerName || 'Walk-in Guest',
+          customer_name: customerName.trim() || 'Walk-in Guest',
           table_id: orderType === 'Dine-In' ? selectedTable : null,
           total_amount: netTotal,
           status: 'New',
@@ -110,7 +114,6 @@ export default function NewOrderPage() {
 
       if (orderErr) throw orderErr;
 
-      // 2. Insert Order Items
       const orderItemsToInsert = cart.map(item => ({
         order_id: orderData.id,
         menu_item_id: item.id,
@@ -122,7 +125,6 @@ export default function NewOrderPage() {
       const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsToInsert);
       if (itemsErr) throw itemsErr;
 
-      // 3. Mark Table Occupied if Dine-In
       if (orderType === 'Dine-In' && selectedTable) {
         await supabase
           .from('tables')
@@ -135,6 +137,9 @@ export default function NewOrderPage() {
       setSelectedTable('');
       setCustomerName('');
       setSplitCount(1);
+      
+      // Fast refresh tables after occupying
+      fetchInitialData();
     } catch (err) {
       alert('Order placement error: ' + err.message);
     } finally {
@@ -311,7 +316,7 @@ export default function NewOrderPage() {
           )}
         </div>
 
-        {/* Day 10 VIP: Payment Method Selector */}
+        {/* Payment Selector */}
         <div className="space-y-2 pt-2 border-t border-neutral-100">
           <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Payment Method</label>
           <div className="grid grid-cols-3 gap-2">
@@ -339,7 +344,7 @@ export default function NewOrderPage() {
           </div>
         </div>
 
-        {/* Day 10 VIP: Split Bill Calculator */}
+        {/* Split Bill Calculator */}
         <div className="p-3 bg-neutral-50 rounded-2xl border border-neutral-100 space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-1.5 font-bold text-neutral-700">
@@ -368,7 +373,7 @@ export default function NewOrderPage() {
           )}
         </div>
 
-        {/* Calculation Summary */}
+        {/* Summary */}
         <div className="space-y-1.5 pt-2 border-t border-neutral-100 text-xs">
           <div className="flex justify-between text-neutral-500">
             <span>Subtotal:</span>
