@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import TableQRModal from '../../components/Tables/TableQRModal';
+// Line 3 ko change karein:
+import TableQRModal from './TableQRModal';
 import { 
   Users, Plus, Search, Loader2, X, Armchair, 
   Sparkles, Clock, AlertCircle, ChevronDown, QrCode

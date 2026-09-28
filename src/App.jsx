@@ -12,7 +12,6 @@ import DashboardPage from './pages/Dashboard/DashboardPage';
 import AnalyticsPage from './pages/Analytics/AnalyticsPage';
 import InventoryPage from './pages/Inventory/InventoryPage';
 import BillingPage from './pages/Billing/BillingPage';
-import CustomerOrderPage from './pages/Customer/CustomerOrderPage';
 
 // Icons
 import { 
@@ -55,7 +54,6 @@ function DashboardRouter() {
 
             {/* Sidebar Navigation */}
             <nav className="space-y-1 text-xs font-semibold overflow-y-auto max-h-[calc(100vh-14rem)] pr-1">
-              {/* Overview / Executive Dashboard */}
               <button
                 onClick={() => setActiveTab('overview')}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
@@ -68,7 +66,6 @@ function DashboardRouter() {
                 <span>Overview</span>
               </button>
 
-              {/* Menu Tab */}
               <button
                 onClick={() => setActiveTab('menu')}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
@@ -81,7 +78,6 @@ function DashboardRouter() {
                 <span>Menu Management</span>
               </button>
 
-              {/* Tables & Floor Tab */}
               <button
                 onClick={() => setActiveTab('tables')}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
@@ -94,7 +90,6 @@ function DashboardRouter() {
                 <span>Floor & Tables</span>
               </button>
 
-              {/* New POS Order Tab */}
               <button
                 onClick={() => setActiveTab('new-order')}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
@@ -107,7 +102,6 @@ function DashboardRouter() {
                 <span>New POS Order</span>
               </button>
 
-              {/* Live Kitchen Tickets Tab */}
               <button
                 onClick={() => setActiveTab('orders-list')}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
@@ -120,7 +114,6 @@ function DashboardRouter() {
                 <span>Live Kitchen Tickets</span>
               </button>
 
-              {/* Inventory & Stock Tab */}
               <button
                 onClick={() => setActiveTab('inventory')}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
@@ -133,7 +126,6 @@ function DashboardRouter() {
                 <span>Inventory & Stock</span>
               </button>
 
-              {/* Billing & Register Z-Report Tab */}
               <button
                 onClick={() => setActiveTab('billing')}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
@@ -146,7 +138,6 @@ function DashboardRouter() {
                 <span>Billing & Register</span>
               </button>
 
-              {/* Business Analytics Tab */}
               <button
                 onClick={() => setActiveTab('analytics')}
                 className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl transition cursor-pointer text-left ${
@@ -176,7 +167,6 @@ function DashboardRouter() {
             </nav>
           </div>
 
-          {/* User Profile & Logout */}
           <div className="pt-4 border-t border-neutral-100 flex items-center justify-between">
             <div className="min-w-0 pr-2">
               <p className="text-xs font-bold text-neutral-800 truncate">{profile?.full_name}</p>
@@ -232,10 +222,6 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public Customer Self-Ordering Route (Accessed via Table QR) */}
-          <Route path="/order/table/:tableNumber" element={<CustomerOrderPage />} />
-
-          {/* Core System Auth & Protected Router */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/*" element={<DashboardRouter />} />
         </Routes>

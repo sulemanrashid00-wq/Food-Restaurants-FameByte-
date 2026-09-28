@@ -1,0 +1,267 @@
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { supabase } from '../../lib/supabaseClient';
+import { 
+  UtensilsCrossed, Plus, Minus, ShoppingBag, 
+  CheckCircle2, Loader2, AlertCircle 
+} from 'lucide-react';
+
+export default function CustomerOrderPage() {
+  const { tableNumber } = useParams();
+  const [table, setTable] = useState(null);
+  const [menuItems, setMenuItems] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [cart, setCart] = useState([]);
+  const [customerName, setCustomerName] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [orderSuccess, setOrderSuccess] = useState(false);
+
+  useEffect(() => {
+    fetchTableAndMenu();
+  }, [tableNumber]);
+
+  const fetchTableAndMenu = async () => {
+    setLoading(true);
+    try {
+      const { data: tableData, error: tableErr } = await supabase
+        .from('tables')
+        .select('*')
+        .eq('table_number', tableNumber)
+        .single();
+
+      if (tableErr) throw new Error('Table not found or invalid QR code.');
+      setTable(tableData);
+
+      const { data: menuData } = await supabase
+        .from('menu_items')
+        .select('*')
+        .eq('is_available', true);
+
+      setMenuItems(menuData || []);
+      const cats = ['All', ...new Set(menuData?.map(item => item.category).filter(Boolean))];
+      setCategories(cats);
+    } catch (err) {
+      console.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addToCart = (item) => {
+    setCart(prev => {
+      const exists = prev.find(i => i.id === item.id);
+      if (exists) {
+        return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i);
+      }
+      return [...prev, { ...item, quantity: 1 }];
+    });
+  };
+
+  const updateQty = (id, delta) => {
+    setCart(prev => prev.map(i => {
+      if (i.id === id) {
+        const next = i.quantity + delta;
+        return next > 0 ? { ...i, quantity: next } : null;
+      }
+      return i;
+    }).filter(Boolean));
+  };
+
+  const subtotal = cart.reduce((sum, item) => sum + (Number(item.price) * item.quantity), 0);
+  const tax = subtotal * 0.05;
+  const grandTotal = subtotal + tax;
+
+  const handleGuestCheckout = async () => {
+    if (cart.length === 0) return;
+    setSubmitting(true);
+    try {
+      const { data: orderData, error: orderErr } = await supabase
+        .from('orders')
+        .insert([{
+          customer_name: customerName.trim() || `Guest (Table ${tableNumber})`,
+          table_id: table.id,
+          total_amount: grandTotal,
+          status: 'New',
+          order_type: 'Dine-In',
+          payment_method: 'Cash',
+          payment_status: 'Pending'
+        }])
+        .select()
+        .single();
+
+      if (orderErr) throw orderErr;
+
+      const itemsPayload = cart.map(it => ({
+        order_id: orderData.id,
+        menu_item_id: it.id,
+        quantity: it.quantity,
+        unit_price: it.price,
+        subtotal: it.price * it.quantity
+      }));
+
+      const { error: itemsErr } = await supabase.from('order_items').insert(itemsPayload);
+      if (itemsErr) throw itemsErr;
+
+      await supabase.from('tables').update({ status: 'Occupied' }).eq('id', table.id);
+
+      setOrderSuccess(true);
+      setCart([]);
+    } catch (err) {
+      alert('Could not place order: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#FDF7F2] flex flex-col items-center justify-center p-6 text-center">
+        <Loader2 className="w-10 h-10 animate-spin text-orange-500 mb-3" />
+        <p className="text-sm font-bold text-neutral-700">Loading Table Menu...</p>
+      </div>
+    );
+  }
+
+  if (!table) {
+    return (
+      <div className="min-h-screen bg-[#FDF7F2] flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="w-12 h-12 text-rose-500 mb-3" />
+        <h2 className="text-lg font-black text-neutral-800">Invalid Table QR</h2>
+        <p className="text-xs text-neutral-500 mt-1">Please ask restaurant staff for assistance.</p>
+      </div>
+    );
+  }
+
+  if (orderSuccess) {
+    return (
+      <div className="min-h-screen bg-[#FDF7F2] flex flex-col items-center justify-center p-6 text-center">
+        <div className="bg-white p-8 rounded-3xl border border-orange-100 shadow-xl max-w-sm w-full space-y-4">
+          <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center mx-auto">
+            <CheckCircle2 className="w-10 h-10" />
+          </div>
+          <h2 className="text-xl font-black text-neutral-900">Order Sent to Kitchen!</h2>
+          <p className="text-xs text-neutral-500">
+            Your dishes are being prepared for <span className="font-bold text-neutral-800">Table {tableNumber}</span>.
+          </p>
+          <button
+            onClick={() => setOrderSuccess(false)}
+            className="w-full py-3 bg-neutral-900 text-white rounded-2xl text-xs font-bold hover:bg-neutral-800 transition cursor-pointer"
+          >
+            Order More Items
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const filteredItems = menuItems.filter(item => 
+    selectedCategory === 'All' || item.category === selectedCategory
+  );
+
+  return (
+    <div className="min-h-screen bg-[#FDF7F2] pb-28">
+      <header className="bg-white border-b border-orange-100/80 px-4 py-3 sticky top-0 z-30 shadow-2xs">
+        <div className="max-w-md mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-orange-500 text-white flex items-center justify-center font-bold text-sm shadow-xs shadow-orange-500/30">
+              D
+            </div>
+            <div>
+              <h1 className="text-xs font-black text-neutral-900 tracking-tight">DELICIOUS POS</h1>
+              <p className="text-[10px] text-orange-600 font-bold uppercase">Table {tableNumber}</p>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
+            Live Kitchen Active
+          </span>
+        </div>
+      </header>
+
+      <main className="max-w-md mx-auto px-4 pt-4 space-y-4">
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                selectedCategory === cat
+                  ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
+                  : 'bg-white text-neutral-600 border border-neutral-200/80 shadow-2xs'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-3">
+          {filteredItems.map(item => {
+            const inCart = cart.find(c => c.id === item.id);
+            return (
+              <div 
+                key={item.id}
+                className="bg-white p-3.5 rounded-2xl border border-neutral-100 shadow-2xs flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="text-[9px] font-bold text-orange-500 uppercase tracking-wider">{item.category}</span>
+                  <h3 className="text-xs font-extrabold text-neutral-900 truncate">{item.name}</h3>
+                  <p className="text-xs font-mono font-bold text-neutral-800 mt-0.5">Rs. {Number(item.price).toFixed(2)}</p>
+                </div>
+
+                {inCart ? (
+                  <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-xl px-2 py-1">
+                    <button onClick={() => updateQty(item.id, -1)} className="text-orange-700 hover:text-black">
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-xs font-black text-orange-800 w-4 text-center">{inCart.quantity}</span>
+                    <button onClick={() => updateQty(item.id, 1)} className="text-orange-700 hover:text-black">
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => addToCart(item)}
+                    className="p-2 rounded-xl bg-neutral-100 hover:bg-orange-500 hover:text-white text-neutral-700 transition cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </main>
+
+      {cart.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/95 backdrop-blur-md border-t border-neutral-200 z-40">
+          <div className="max-w-md mx-auto space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-neutral-500">{cart.reduce((s, i) => s + i.quantity, 0)} Items Selected</span>
+              <span className="font-mono font-black text-neutral-900 text-sm">Total: Rs. {grandTotal.toFixed(2)}</span>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Your Name (Optional)"
+                value={customerName}
+                onChange={e => setCustomerName(e.target.value)}
+                className="flex-1 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-orange-500"
+              />
+              <button
+                onClick={handleGuestCheckout}
+                disabled={submitting}
+                className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md shadow-orange-500/25 transition cursor-pointer disabled:opacity-50"
+              >
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShoppingBag className="w-4 h-4" />}
+                <span>Place Order</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
