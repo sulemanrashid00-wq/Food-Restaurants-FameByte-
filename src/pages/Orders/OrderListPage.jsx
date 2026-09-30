@@ -1,31 +1,60 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { 
-  Clock, CheckCircle2, RefreshCw, Loader2, User, Armchair,
-  Printer, Utensils, Search
+  Clock, CheckCircle, ChefHat, AlertTriangle, 
+  Flame, RefreshCw, Loader2, Utensils, XCircle, 
+  Volume2, VolumeX, Timer, BellRing
 } from 'lucide-react';
-import ReceiptModal from '../../components/Receipt/ReceiptModal';
-
-const STATUSES = ['All', 'New', 'Preparing', 'Ready', 'Served', 'Cancelled'];
 
 export default function OrderListPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedStatus, setSelectedStatus] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [updatingId, setUpdatingId] = useState(null);
-  const [receiptOrder, setReceiptOrder] = useState(null);
+  const [filter, setFilter] = useState('Active'); // 'Active', 'All', 'Served', 'Cancelled'
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const isInitialLoad = useRef(true);
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  // Web Audio Synth Bell (Kitchen Ping)
+  const playKitchenPing = () => {
+    if (!soundEnabled) return;
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // High A5 tone
+      osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.3);
+      
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    } catch (e) {
+      console.warn('Audio play restricted:', e);
+    }
+  };
+
+  const fetchKitchenOrders = async () => {
     try {
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          *,
+          id,
+          customer_name,
+          table_id,
+          total_amount,
+          status,
+          order_type,
+          is_rush,
+          created_at,
           tables (id, table_number),
           order_items (
-            id, quantity, unit_price, subtotal,
+            id,
+            quantity,
             menu_items (name)
           )
         `)
@@ -34,38 +63,42 @@ export default function OrderListPage() {
       if (error) throw error;
       setOrders(data || []);
     } catch (err) {
-      console.error('Fetch orders error:', err.message);
+      console.error('KDS Fetch Error:', err.message);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchOrders();
+    fetchKitchenOrders();
 
-    const subscription = supabase
-      .channel('orders-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        fetchOrders();
+    // Supabase Live Sync for KDS with Audio Alert
+    const channel = supabase
+      .channel('kds-live-tickets-channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          playKitchenPing();
+        }
+        fetchKitchenOrders();
       })
       .subscribe();
 
     return () => {
-      supabase.removeChannel(subscription);
+      supabase.removeChannel(channel);
     };
-  }, []);
+  }, [soundEnabled]);
 
-  const handleStatusUpdate = async (order, newStatus) => {
-    setUpdatingId(order.id);
+  const updateOrderStatus = async (order, newStatus) => {
     try {
       const { error } = await supabase
         .from('orders')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .update({ status: newStatus })
         .eq('id', order.id);
 
       if (error) throw error;
 
-      if ((newStatus === 'Served' || newStatus === 'Cancelled') && order.tables?.id) {
+      // Agar order Served ho gaya aur Dine-In table attached tha, table ko available mark karne ka option
+      if (newStatus === 'Served' && order.tables?.id) {
         await supabase
           .from('tables')
           .update({ status: 'Available' })
@@ -75,164 +108,262 @@ export default function OrderListPage() {
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: newStatus } : o));
     } catch (err) {
       alert('Status update failed: ' + err.message);
-    } finally {
-      setUpdatingId(null);
     }
   };
 
-  const filteredOrders = orders.filter(o => {
-    if (selectedStatus !== 'All' && o.status !== selectedStatus) return false;
-    if (searchQuery.trim() !== '') {
-      const q = searchQuery.toLowerCase();
-      const customer = (o.customer_name || '').toLowerCase();
-      const tableNum = o.tables?.table_number ? `table ${o.tables.table_number}` : '';
-      return customer.includes(q) || tableNum.toLowerCase().includes(q);
+  const toggleRush = async (orderId, currentRush) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ is_rush: !currentRush })
+        .eq('id', orderId);
+
+      if (error) throw error;
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, is_rush: !currentRush } : o));
+    } catch (err) {
+      alert('Rush toggle failed: ' + err.message);
     }
+  };
+
+  const getElapsedMinutes = (dateStr) => {
+    return Math.floor((new Date() - new Date(dateStr)) / 60000);
+  };
+
+  const filteredOrders = orders.filter(o => {
+    if (filter === 'Active') return o.status === 'New' || o.status === 'Preparing';
+    if (filter === 'Served') return o.status === 'Served';
+    if (filter === 'Cancelled') return o.status === 'Cancelled';
     return true;
   });
 
+  const activeOrdersCount = orders.filter(o => o.status === 'New' || o.status === 'Preparing').length;
+  const rushOrdersCount = orders.filter(o => (o.status === 'New' || o.status === 'Preparing') && o.is_rush).length;
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+        <p className="text-xs font-semibold text-neutral-400">Connecting to Kitchen Display Stream...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Top Header & Quick Metrics */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-extrabold text-neutral-900 tracking-tight">Kitchen & Live Order Tickets</h2>
-          <p className="text-xs font-medium text-neutral-500 mt-0.5">Real-time KDS Dispatcher & Thermal Billing Center</p>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-black text-neutral-900 tracking-tight">Kitchen Display Stream (KDS)</h2>
+            <span className="bg-orange-50 text-orange-600 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-orange-200 flex items-center gap-1">
+              <ChefHat className="w-3 h-3" /> ACTIVE TERMINAL
+            </span>
+          </div>
+          <p className="text-xs font-medium text-neutral-500 mt-0.5">Real-time prep queue, urgent rush tickets & auto table sync.</p>
         </div>
 
-        <button
-          onClick={fetchOrders}
-          className="flex items-center gap-2 bg-white border border-neutral-200/90 text-neutral-700 px-4 py-2 rounded-2xl text-xs font-bold shadow-2xs hover:bg-neutral-50 cursor-pointer w-fit"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh Tickets</span>
-        </button>
-      </div>
+        {/* Audio Toggle & Filters */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setSoundEnabled(!soundEnabled);
+              if (!soundEnabled) playKitchenPing();
+            }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold border transition cursor-pointer ${
+              soundEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-neutral-400 border-neutral-200'
+            }`}
+          >
+            {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-600" /> : <VolumeX className="w-4 h-4 text-neutral-400" />}
+            <span>{soundEnabled ? 'Sound On' : 'Muted'}</span>
+          </button>
 
-      {/* Filter Tabs & Search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {STATUSES.map(st => {
-            const count = st === 'All' ? orders.length : orders.filter(o => o.status === st).length;
-            const isActive = selectedStatus === st;
-            return (
+          <div className="flex items-center gap-1 bg-white p-1 rounded-2xl border border-neutral-200/80 shadow-2xs">
+            {['Active', 'All', 'Served', 'Cancelled'].map(f => (
               <button
-                key={st}
-                onClick={() => setSelectedStatus(st)}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-                  isActive
-                    ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
-                    : 'bg-white text-neutral-600 border border-neutral-200/80 shadow-2xs'
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  filter === f ? 'bg-neutral-900 text-white shadow-xs' : 'text-neutral-500 hover:text-neutral-800'
                 }`}
               >
-                <span>{st}</span>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                  isActive ? 'bg-white/25 text-white' : 'bg-neutral-100 text-neutral-700'
-                }`}>
-                  {count}
-                </span>
+                {f}
               </button>
-            );
-          })}
-        </div>
-
-        <div className="relative w-full sm:w-64">
-          <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search customer or table..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white border border-neutral-200 rounded-2xl pl-10 pr-4 py-2 text-xs text-neutral-800 placeholder-neutral-400 focus:outline-none focus:border-orange-500 shadow-2xs"
-          />
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Orders Grid */}
-      {loading ? (
-        <div className="flex justify-center items-center py-28">
-          <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+      {/* Real-time Status Metric Badges */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white p-3.5 rounded-2xl border border-neutral-100 shadow-2xs flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-neutral-400 uppercase">Active Prep Queue</p>
+            <h4 className="text-lg font-black text-neutral-900">{activeOrdersCount} Tickets</h4>
+          </div>
+          <Timer className="w-5 h-5 text-orange-500" />
         </div>
-      ) : filteredOrders.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-3xl border border-neutral-100 shadow-2xs">
-          <Utensils className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
-          <p className="text-sm font-bold text-neutral-800">No active orders found</p>
+
+        <div className="bg-white p-3.5 rounded-2xl border border-neutral-100 shadow-2xs flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-rose-500 uppercase">Rush Orders</p>
+            <h4 className="text-lg font-black text-rose-600">{rushOrdersCount} Urgent</h4>
+          </div>
+          <Flame className="w-5 h-5 text-rose-500" />
+        </div>
+
+        <div className="bg-white p-3.5 rounded-2xl border border-neutral-100 shadow-2xs flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-neutral-400 uppercase">Total Logged</p>
+            <h4 className="text-lg font-black text-neutral-800">{orders.length} Orders</h4>
+          </div>
+          <Utensils className="w-5 h-5 text-neutral-400" />
+        </div>
+
+        <div className="bg-white p-3.5 rounded-2xl border border-neutral-100 shadow-2xs flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-emerald-600 uppercase">Kitchen Stream</p>
+            <h4 className="text-lg font-black text-emerald-600">Connected</h4>
+          </div>
+          <BellRing className="w-5 h-5 text-emerald-500" />
+        </div>
+      </div>
+
+      {/* Ticket Grid */}
+      {filteredOrders.length === 0 ? (
+        <div className="bg-white rounded-3xl p-12 text-center border border-neutral-100 shadow-2xs max-w-md mx-auto space-y-2">
+          <Utensils className="w-8 h-8 text-neutral-300 mx-auto" />
+          <h3 className="text-sm font-bold text-neutral-700">No Orders in this View</h3>
+          <p className="text-xs text-neutral-400">All caught up! New orders placed at POS will show up here automatically with audio alert.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredOrders.map((o) => (
-            <div key={o.id} className="bg-white rounded-3xl p-5 border border-neutral-100 shadow-2xs flex flex-col justify-between space-y-4">
-              <div>
-                <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-orange-500" />
-                    <span className="text-xs font-extrabold text-neutral-900">{o.customer_name || 'Guest'}</span>
-                  </div>
-                  <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
-                    o.status === 'New' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                    o.status === 'Preparing' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                    o.status === 'Ready' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                    o.status === 'Served' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                    'bg-neutral-100 text-neutral-600 border-neutral-200'
-                  }`}>
-                    {o.status}
-                  </span>
-                </div>
+          {filteredOrders.map(order => {
+            const isRush = order.is_rush;
+            const elapsed = getElapsedMinutes(order.created_at);
+            const isLate = elapsed >= 15 && order.status !== 'Served' && order.status !== 'Cancelled';
 
-                <div className="flex items-center justify-between my-3 text-xs text-neutral-500 font-medium">
-                  <span className="flex items-center gap-1">
-                    <Armchair className="w-3.5 h-3.5 text-neutral-400" />
-                    {o.tables?.table_number ? `Table ${o.tables.table_number}` : 'Takeaway'}
-                  </span>
-                  <span className="font-mono text-[10px] text-neutral-400">
-                    {new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-
-                <div className="space-y-1.5 bg-neutral-50 p-3 rounded-2xl border border-neutral-100">
-                  {o.order_items?.map((item) => (
-                    <div key={item.id} className="flex justify-between text-xs font-semibold text-neutral-700">
-                      <span>{item.quantity}× {item.menu_items?.name || 'Item'}</span>
-                      <span className="font-mono text-neutral-900">Rs. {item.subtotal}</span>
+            return (
+              <div
+                key={order.id}
+                className={`bg-white rounded-3xl p-5 border transition flex flex-col justify-between shadow-2xs relative overflow-hidden ${
+                  isRush 
+                    ? 'border-rose-400 ring-2 ring-rose-400/20 shadow-rose-100' 
+                    : isLate 
+                    ? 'border-amber-400 ring-2 ring-amber-400/20'
+                    : order.status === 'Preparing' 
+                    ? 'border-amber-300' 
+                    : 'border-neutral-100'
+                }`}
+              >
+                {/* Priority Badges */}
+                <div className="flex gap-1 absolute top-0 right-0">
+                  {isLate && (
+                    <div className="bg-amber-500 text-white text-[9px] font-black px-2.5 py-0.5 rounded-bl-lg tracking-wider flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> DELAYED
                     </div>
-                  ))}
+                  )}
+                  {isRush && (
+                    <div className="bg-rose-500 text-white text-[9px] font-black px-3 py-0.5 rounded-bl-xl tracking-wider flex items-center gap-1">
+                      <Flame className="w-3 h-3 fill-white" /> RUSH
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  {/* Ticket Header */}
+                  <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+                    <div>
+                      <span className="text-[10px] font-black text-neutral-400 uppercase tracking-wider">
+                        #{order.id.slice(0, 6).toUpperCase()}
+                      </span>
+                      <h4 className="text-sm font-black text-neutral-900">{order.customer_name}</h4>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
+                        {order.tables?.table_number ? `Table ${order.tables.table_number}` : 'Takeaway'}
+                      </span>
+                      <p className={`text-[10px] font-bold mt-1 flex items-center gap-1 justify-end ${
+                        isLate ? 'text-amber-600' : 'text-neutral-400'
+                      }`}>
+                        <Clock className="w-3 h-3" /> {elapsed < 1 ? 'Just now' : `${elapsed}m ago`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Dishes Items List */}
+                  <div className="py-3 space-y-2">
+                    {order.order_items?.map(it => (
+                      <div key={it.id} className="flex justify-between items-center text-xs">
+                        <span className="font-extrabold text-neutral-800">
+                          {it.menu_items?.name || 'Item'}
+                        </span>
+                        <span className="font-mono font-black text-neutral-900 bg-neutral-100 px-2 py-0.5 rounded-lg text-[11px]">
+                          x{it.quantity}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Ticket Controls & Actions */}
+                <div className="pt-3 border-t border-neutral-100 space-y-2 mt-2">
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => toggleRush(order.id, order.is_rush)}
+                      className={`text-[10px] font-black px-2.5 py-1 rounded-xl flex items-center gap-1 cursor-pointer transition ${
+                        isRush 
+                          ? 'bg-rose-50 text-rose-600 border border-rose-200' 
+                          : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100 border border-neutral-200'
+                      }`}
+                    >
+                      <Flame className="w-3 h-3" />
+                      <span>{isRush ? 'Remove Rush' : 'Mark Rush'}</span>
+                    </button>
+
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                      order.status === 'Served' ? 'bg-emerald-50 text-emerald-600' :
+                      order.status === 'Preparing' ? 'bg-amber-50 text-amber-600' :
+                      order.status === 'Cancelled' ? 'bg-rose-50 text-rose-600' :
+                      'bg-blue-50 text-blue-600'
+                    }`}>
+                      {order.status}
+                    </span>
+                  </div>
+
+                  {/* Status Progression Buttons */}
+                  {order.status !== 'Served' && order.status !== 'Cancelled' && (
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      {order.status === 'New' && (
+                        <button
+                          onClick={() => updateOrderStatus(order, 'Preparing')}
+                          className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition shadow-xs"
+                        >
+                          <ChefHat className="w-3.5 h-3.5" /> Start Cooking
+                        </button>
+                      )}
+
+                      {order.status === 'Preparing' && (
+                        <button
+                          onClick={() => updateOrderStatus(order, 'Served')}
+                          className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition shadow-xs"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" /> Mark Served
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => updateOrderStatus(order, 'Cancelled')}
+                        className="w-full py-2 bg-neutral-100 hover:bg-rose-50 hover:text-rose-600 text-neutral-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition"
+                      >
+                        <XCircle className="w-3.5 h-3.5" /> Cancel Ticket
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              <div className="pt-3 border-t border-neutral-100 flex items-center justify-between gap-2">
-                <button
-                  onClick={() => setReceiptOrder(o)}
-                  className="p-2.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold"
-                  title="Print Thermal Receipt"
-                >
-                  <Printer className="w-4 h-4 text-orange-500" />
-                  <span>Receipt</span>
-                </button>
-
-                <select
-                  value={o.status}
-                  disabled={updatingId === o.id}
-                  onChange={(e) => handleStatusUpdate(o, e.target.value)}
-                  className="text-xs bg-neutral-50 border border-neutral-200 rounded-xl px-2.5 py-2 font-bold text-neutral-800 focus:outline-none cursor-pointer"
-                >
-                  <option value="New">New</option>
-                  <option value="Preparing">Preparing</option>
-                  <option value="Ready">Ready</option>
-                  <option value="Served">Served (Release Table)</option>
-                  <option value="Cancelled">Cancelled</option>
-                </select>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-      )}
-
-      {/* Integrated Thermal Receipt Component */}
-      {receiptOrder && (
-        <ReceiptModal 
-          order={receiptOrder} 
-          onClose={() => setReceiptOrder(null)} 
-        />
       )}
     </div>
   );

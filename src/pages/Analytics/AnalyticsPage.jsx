@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { 
   BarChart2, TrendingUp, DollarSign, 
@@ -18,12 +18,11 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchDeepAnalytics = async () => {
+  const fetchDeepAnalytics = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase.from('orders').select('total_amount, status, created_at');
 
-      // Date Range Filtering Logic
       const now = new Date();
       if (dateRange === 'today') {
         const startOfDay = new Date(now.setHours(0, 0, 0, 0)).toISOString();
@@ -39,11 +38,13 @@ export default function AnalyticsPage() {
       const { data: orders, error: ordersErr } = await query;
       if (ordersErr) throw ordersErr;
 
-      const totalSales = orders?.reduce((acc, curr) => acc + (Number(curr.total_amount) || 0), 0) || 0;
+      // VIP FIX: Only 'Served' orders contribute to revenue and average basket size!
+      const validServed = orders?.filter(o => o.status === 'Served') || [];
+      const totalSales = validServed.reduce((acc, curr) => acc + (Number(curr.total_amount) || 0), 0);
       const totalTransactions = orders?.length || 0;
-      const completedOrders = orders?.filter(o => o.status === 'Served').length || 0;
+      const completedOrders = validServed.length;
       const cancelledOrders = orders?.filter(o => o.status === 'Cancelled').length || 0;
-      const avgBasketSize = totalTransactions > 0 ? totalSales / totalTransactions : 0;
+      const avgBasketSize = completedOrders > 0 ? totalSales / completedOrders : 0;
 
       setMetrics({
         totalSales,
@@ -53,14 +54,16 @@ export default function AnalyticsPage() {
         avgBasketSize
       });
 
-      // Category breakdown
+      // Category breakdown (Excluding cancelled orders)
       const { data: itemsData } = await supabase
         .from('order_items')
         .select(`
           quantity,
           subtotal,
-          menu_items (category)
-        `);
+          menu_items (category),
+          orders!inner(status)
+        `)
+        .neq('orders.status', 'Cancelled');
 
       if (itemsData) {
         const catMap = {};
@@ -79,14 +82,14 @@ export default function AnalyticsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [dateRange]);
 
   useEffect(() => {
     fetchDeepAnalytics();
-  }, [dateRange]);
+  }, [fetchDeepAnalytics]);
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-6 pb-12 px-2 sm:px-0">
       {/* Header & Date Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -95,7 +98,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Date Filter Pills */}
-        <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-neutral-200/80 shadow-2xs">
+        <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-neutral-200/80 shadow-2xs overflow-x-auto">
           {[
             { id: 'today', label: 'Today' },
             { id: 'week', label: 'This Week' },
@@ -105,7 +108,7 @@ export default function AnalyticsPage() {
             <button
               key={tab.id}
               onClick={() => setDateRange(tab.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
                 dateRange === tab.id 
                   ? 'bg-orange-500 text-white shadow-xs' 
                   : 'text-neutral-600 hover:bg-neutral-100'
@@ -125,7 +128,7 @@ export default function AnalyticsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-2">
-            <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Gross Revenue</span>
+            <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Gross Revenue (Served)</span>
             <h3 className="text-3xl font-black text-neutral-900 font-mono">Rs. {metrics.totalSales.toFixed(2)}</h3>
             <p className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
               <TrendingUp className="w-3.5 h-3.5" /> Filtered Period Earnings
@@ -135,16 +138,45 @@ export default function AnalyticsPage() {
           <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-2">
             <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Total Orders</span>
             <h3 className="text-3xl font-black text-neutral-900">{metrics.totalTransactions}</h3>
-            <p className="text-[11px] font-semibold text-neutral-400">Processed Transactions</p>
+            <p className="text-[11px] font-semibold text-neutral-400">Processed ({metrics.completedOrders} completed, {metrics.cancelledOrders} cancelled)</p>
           </div>
 
           <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-2">
             <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Average Order Ticket</span>
             <h3 className="text-3xl font-black text-neutral-900 font-mono">Rs. {metrics.avgBasketSize.toFixed(2)}</h3>
-            <p className="text-[11px] font-semibold text-blue-600">Per Customer Spent</p>
+            <p className="text-[11px] font-semibold text-blue-600">Per Completed Customer</p>
           </div>
         </div>
       )}
+
+      {/* Category Breakdown Performance */}
+      <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-4">
+        <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-orange-500" />
+            <h3 className="text-sm font-extrabold text-neutral-900">Category Sales Breakdown</h3>
+          </div>
+          <span className="text-[10px] font-bold text-neutral-400">Performance Index</span>
+        </div>
+
+        {categorySales.length === 0 ? (
+          <p className="text-xs text-neutral-400 text-center py-6">No category data available for this timeframe.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {categorySales.map(cat => (
+              <div key={cat.category} className="bg-neutral-50 p-4 rounded-2xl border border-neutral-100 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-extrabold text-neutral-800">{cat.category}</span>
+                  <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                    {cat.totalQty} units
+                  </span>
+                </div>
+                <p className="text-lg font-black font-mono text-neutral-900">Rs. {cat.totalRev.toFixed(2)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
