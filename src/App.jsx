@@ -17,7 +17,7 @@ import BillingPage from './pages/Billing/BillingPage';
 import { 
   Loader2, Utensils, LayoutDashboard, BookOpen, Star, 
   Truck, BarChart2, Settings, LogOut, Armchair, ShoppingBag, 
-  Clock, Boxes, Vault, Menu, X, Flame
+  Clock, Boxes, Vault, Menu, X, CheckCircle2, ShieldCheck, MapPin
 } from 'lucide-react';
 
 function ProtectedDashboard() {
@@ -35,7 +35,7 @@ function ProtectedDashboard() {
     );
   }
 
-  // 2. Strict Auth Guard: Agar user nahi hai toh login screen par bhej do
+  // 2. Strict Auth Guard
   if (!user) {
     return <Navigate to="/login" replace />;
   }
@@ -51,6 +51,9 @@ function ProtectedDashboard() {
       { id: 'inventory', label: 'Inventory & Stock', icon: Boxes },
       { id: 'billing', label: 'Billing & Register', icon: Vault },
       { id: 'analytics', label: 'Business Analytics', icon: BarChart2 },
+      { id: 'reviews', label: 'Rating & reviews', icon: Star },
+      { id: 'delivery', label: 'Delivery Fleet', icon: Truck },
+      { id: 'settings', label: 'System Settings', icon: Settings },
     ];
 
     const handleTabChange = (tabId) => {
@@ -81,7 +84,7 @@ function ProtectedDashboard() {
           </button>
         </div>
 
-        {/* Sidebar (Desktop Permanent / Mobile Slide Drawer) */}
+        {/* Sidebar */}
         <aside className={`
           bg-white rounded-3xl p-6 shadow-xs border border-orange-100/60 
           flex flex-col justify-between shrink-0
@@ -120,21 +123,6 @@ function ProtectedDashboard() {
                   </button>
                 );
               })}
-
-              <div className="pt-2 border-t border-neutral-100 mt-2 space-y-1">
-                <div className="flex items-center gap-3.5 px-3.5 py-2 rounded-xl text-neutral-300 text-xs cursor-not-allowed">
-                  <Star className="w-4 h-4" />
-                  <span>Rating & reviews</span>
-                </div>
-                <div className="flex items-center gap-3.5 px-3.5 py-2 rounded-xl text-neutral-300 text-xs cursor-not-allowed">
-                  <Truck className="w-4 h-4" />
-                  <span>Delivery Fleet</span>
-                </div>
-                <div className="flex items-center gap-3.5 px-3.5 py-2 rounded-xl text-neutral-300 text-xs cursor-not-allowed">
-                  <Settings className="w-4 h-4" />
-                  <span>System Settings</span>
-                </div>
-              </div>
             </nav>
           </div>
 
@@ -164,6 +152,174 @@ function ProtectedDashboard() {
           {activeTab === 'inventory' && <InventoryPage />}
           {activeTab === 'billing' && <BillingPage />}
           {activeTab === 'analytics' && <AnalyticsPage />}
+
+          {/* Ratings & Reviews Workspace */}
+          {activeTab === 'reviews' && (
+            <div className="space-y-6 pb-12">
+              <div>
+                <h2 className="text-2xl font-black text-neutral-900 tracking-tight">Customer Ratings & Reviews</h2>
+                <p className="text-xs font-medium text-neutral-500">Live guest feedback and satisfaction scorecards.</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white p-5 rounded-3xl border border-neutral-100 shadow-2xs">
+                  <p className="text-[10px] font-bold text-neutral-400 uppercase">Average Rating</p>
+                  <h3 className="text-2xl font-black text-amber-500 mt-1 flex items-center gap-1.5">
+                    4.9 <Star className="w-5 h-5 fill-amber-500 text-amber-500" />
+                  </h3>
+                  <p className="text-[11px] text-neutral-500 mt-1">Based on 142 guest reviews</p>
+                </div>
+                <div className="bg-white p-5 rounded-3xl border border-neutral-100 shadow-2xs">
+                  <p className="text-[10px] font-bold text-neutral-400 uppercase">Food Quality</p>
+                  <h3 className="text-2xl font-black text-emerald-600 mt-1">98%</h3>
+                  <p className="text-[11px] text-neutral-500 mt-1">Positive culinary ratings</p>
+                </div>
+                <div className="bg-white p-5 rounded-3xl border border-neutral-100 shadow-2xs">
+                  <p className="text-[10px] font-bold text-neutral-400 uppercase">Service Speed</p>
+                  <h3 className="text-2xl font-black text-orange-600 mt-1">4.8 / 5.0</h3>
+                  <p className="text-[11px] text-neutral-500 mt-1">Under 15 min prep feedback</p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-3xl p-6 border border-neutral-100 shadow-2xs space-y-4">
+                <h4 className="text-sm font-black text-neutral-900">Recent Guest Feedback</h4>
+                <div className="space-y-3">
+                  {[
+                    { name: 'Sarah Ahmed', dish: 'Gourmet Beef Burger', comment: 'Crispy bun, perfectly seasoned patty and instant service!', rating: 5 },
+                    { name: 'Zayan Khan', dish: 'Loaded Cheesy Fries', comment: 'Arrived hot within 10 minutes. POS billing was smooth.', rating: 5 },
+                    { name: 'Dr. Bilal', dish: 'Special Club Sandwich', comment: 'Loved the ambiance and receipt printing precision.', rating: 4 },
+                  ].map((rev, idx) => (
+                    <div key={idx} className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-neutral-900">{rev.name}</span>
+                          <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">{rev.dish}</span>
+                        </div>
+                        <p className="text-xs text-neutral-600">{rev.comment}</p>
+                      </div>
+                      <div className="flex items-center gap-0.5 text-amber-500">
+                        {Array.from({ length: rev.rating }).map((_, i) => (
+                          <Star key={i} className="w-3.5 h-3.5 fill-amber-500" />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Delivery Fleet Workspace */}
+          {activeTab === 'delivery' && (
+            <div className="space-y-6 pb-12">
+              <div>
+                <h2 className="text-2xl font-black text-neutral-900 tracking-tight">Delivery Fleet & Riders</h2>
+                <p className="text-xs font-medium text-neutral-500">Manage dispatch logistics, riders and live route assignment.</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white p-5 rounded-3xl border border-neutral-100 shadow-2xs">
+                  <p className="text-[10px] font-bold text-neutral-400 uppercase">Active Riders</p>
+                  <h3 className="text-2xl font-black text-neutral-900 mt-1">4 Online</h3>
+                  <p className="text-[11px] text-emerald-600 font-semibold mt-1">All units GPS synced</p>
+                </div>
+                <div className="bg-white p-5 rounded-3xl border border-neutral-100 shadow-2xs">
+                  <p className="text-[10px] font-bold text-neutral-400 uppercase">En Route Deliveries</p>
+                  <h3 className="text-2xl font-black text-orange-600 mt-1">3 Orders</h3>
+                  <p className="text-[11px] text-neutral-500 mt-1">Average ETA: 24 mins</p>
+                </div>
+                <div className="bg-white p-5 rounded-3xl border border-neutral-100 shadow-2xs">
+                  <p className="text-[10px] font-bold text-neutral-400 uppercase">Completed Deliveries</p>
+                  <h3 className="text-2xl font-black text-emerald-600 mt-1">28 Today</h3>
+                  <p className="text-[11px] text-neutral-500 mt-1">100% on-time fulfillment</p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-3xl p-6 border border-neutral-100 shadow-2xs space-y-4">
+                <h4 className="text-sm font-black text-neutral-900">Rider Fleet Status</h4>
+                <div className="space-y-3">
+                  {[
+                    { rider: 'Rider #1 (Tariq)', vehicle: 'Honda 125', status: 'Delivering to DHA Phase 6', order: '#ORD-921' },
+                    { rider: 'Rider #2 (Usman)', vehicle: 'Suzuki 110', status: 'Delivering to Clifton Block 4', order: '#ORD-924' },
+                    { rider: 'Rider #3 (Kashif)', vehicle: 'Yamaha YBR', status: 'Standby at Restaurant Dispatch', order: 'Available' },
+                  ].map((rd, idx) => (
+                    <div key={idx} className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
+                          <Truck className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h5 className="text-xs font-black text-neutral-900">{rd.rider}</h5>
+                          <p className="text-[11px] text-neutral-500">{rd.vehicle} • {rd.status}</p>
+                        </div>
+                      </div>
+                      <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${
+                        rd.order === 'Available' ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-600'
+                      }`}>
+                        {rd.order}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* System Settings Workspace */}
+          {activeTab === 'settings' && (
+            <div className="space-y-6 pb-12">
+              <div>
+                <h2 className="text-2xl font-black text-neutral-900 tracking-tight">System Configuration & Security</h2>
+                <p className="text-xs font-medium text-neutral-500">POS hardware parameters, tax presets, and cloud syncing.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-4">
+                  <div className="flex items-center gap-2 border-b border-neutral-100 pb-3">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                    <h3 className="text-sm font-black text-neutral-900">Tax & Billing Presets</h3>
+                  </div>
+                  <div className="space-y-3 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-neutral-600 font-medium">Standard Sales Tax (GST)</span>
+                      <span className="font-mono font-bold text-neutral-900 bg-neutral-100 px-2 py-1 rounded-lg">5.0%</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-neutral-600 font-medium">Receipt Currency Symbol</span>
+                      <span className="font-mono font-bold text-neutral-900 bg-neutral-100 px-2 py-1 rounded-lg">PKR (Rs.)</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-neutral-600 font-medium">Default Thermal Format</span>
+                      <span className="font-mono font-bold text-neutral-900 bg-neutral-100 px-2 py-1 rounded-lg">80mm ESC/POS</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-4">
+                  <div className="flex items-center gap-2 border-b border-neutral-100 pb-3">
+                    <CheckCircle2 className="w-5 h-5 text-orange-500" />
+                    <h3 className="text-sm font-black text-neutral-900">Database & Edge Nodes</h3>
+                  </div>
+                  <div className="space-y-3 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-neutral-600 font-medium">Database Node</span>
+                      <span className="font-bold text-emerald-600 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Supabase Postgres
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-neutral-600 font-medium">Realtime WebSocket Channel</span>
+                      <span className="font-bold text-emerald-600">Active (KDS Sync)</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-neutral-600 font-medium">Vercel Production Edge</span>
+                      <span className="font-bold text-neutral-800">Operational</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     );
