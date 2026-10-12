@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Calendar,
   CheckCircle2,
   CreditCard,
   DollarSign,
+  History,
   Loader2,
   Lock,
   Printer,
@@ -32,26 +34,35 @@ export default function BillingPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [shiftReport, setShiftReport] = useState(null);
+  const [dailyHistory, setDailyHistory] = useState([]);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  const fetchActiveShift = useCallback(async (manualRefresh = false) => {
+  const fetchActiveShiftAndHistory = useCallback(async (manualRefresh = false) => {
     if (manualRefresh) setRefreshing(true);
     else setLoading(true);
 
     setErrorMessage('');
 
     try {
-      const { data: shift, error } = await supabase
-        .from('shifts')
-        .select('*')
-        .eq('status', 'Open')
-        .order('opened_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const [shiftRes, historyRes] = await Promise.all([
+        supabase
+          .from('shifts')
+          .select('*')
+          .eq('status', 'Open')
+          .order('opened_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('daily_sales_records')
+          .select('*')
+          .order('record_date', { ascending: false })
+      ]);
 
-      if (error) throw error;
-      setActiveShift(shift ?? null);
+      if (shiftRes.error) throw shiftRes.error;
+      const shift = shiftRes.data ?? null;
+      setActiveShift(shift);
+      setDailyHistory(historyRes.data || []);
 
       if (!shift) {
         setShiftReport(null);
@@ -106,26 +117,31 @@ export default function BillingPage() {
   }, []);
 
   useEffect(() => {
-    void fetchActiveShift();
+    void fetchActiveShiftAndHistory();
 
     const channel = supabase
-      .channel('billing-shift-and-orders')
+      .channel('billing-shift-orders-history')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'shifts' },
-        () => void fetchActiveShift(true),
+        () => void fetchActiveShiftAndHistory(true),
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
-        () => void fetchActiveShift(true),
+        () => void fetchActiveShiftAndHistory(true),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'daily_sales_records' },
+        () => void fetchActiveShiftAndHistory(true),
       )
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [fetchActiveShift]);
+  }, [fetchActiveShiftAndHistory]);
 
   const handleOpenShift = async (event) => {
     event.preventDefault();
@@ -158,7 +174,7 @@ export default function BillingPage() {
       setActiveShift(data);
       setOpeningFloat('5000');
       setSuccessMessage('Register shift opened successfully.');
-      await fetchActiveShift();
+      await fetchActiveShiftAndHistory();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unable to open shift.';
@@ -192,7 +208,7 @@ export default function BillingPage() {
 
     const difference = actualCash - shiftReport.expectedInDrawer;
     const confirmed = window.confirm(
-      `Confirm shift closing?\nExpected cash: ${money(shiftReport.expectedInDrawer)}\nCounted cash: ${money(actualCash)}\nDifference: ${money(difference)}`,
+      `Confirm shift closing & End-of-Day Archive?\nExpected cash: ${money(shiftReport.expectedInDrawer)}\nCounted cash: ${money(actualCash)}\nDifference: ${money(difference)}`,
     );
     if (!confirmed) return;
 
@@ -201,7 +217,8 @@ export default function BillingPage() {
     setSuccessMessage('');
 
     try {
-      const { error } = await supabase
+      // 1. Close the current shift
+      const { error: shiftError } = await supabase
         .from('shifts')
         .update({
           closing_cash: actualCash,
@@ -217,14 +234,35 @@ export default function BillingPage() {
         .eq('id', activeShift.id)
         .eq('status', 'Open');
 
-      if (error) throw error;
+      if (shiftError) throw shiftError;
 
-      setSuccessMessage('Shift settled and closed successfully.');
+      // 2. Permanently record daily sales snapshot into history table
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { error: historyError } = await supabase
+        .from('daily_sales_records')
+        .upsert([
+          {
+            record_date: todayStr,
+            closed_by: profile?.full_name || activeShift.opened_by || 'Admin',
+            total_sales: shiftReport.totalGrossSales,
+            cash_sales: shiftReport.totalCashSales,
+            card_sales: shiftReport.totalCardSales,
+            qr_sales: shiftReport.totalQrSales,
+            total_orders: shiftReport.totalOrdersCount,
+            opening_cash: Number(activeShift.opening_cash ?? 0),
+            closing_cash: actualCash,
+            cash_variance: difference,
+          },
+        ], { onConflict: 'record_date' });
+
+      if (historyError) throw historyError;
+
+      setSuccessMessage('Shift settled and daily sales history permanently archived.');
       setCountedCash('');
-      await fetchActiveShift();
+      await fetchActiveShiftAndHistory();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Unable to close shift.';
+        error instanceof Error ? error.message : 'Unable to close shift and archive record.';
       setErrorMessage(message);
     } finally {
       setSubmitting(false);
@@ -293,13 +331,13 @@ export default function BillingPage() {
           </div>
           <p className="mt-1.5 max-w-2xl text-sm text-neutral-500">
             Manage opening float, reconcile payment totals, and settle the cash
-            drawer with a printable Z-report.
+            drawer with daily historical archiving.
           </p>
         </div>
 
         <button
           type="button"
-          onClick={() => void fetchActiveShift(true)}
+          onClick={() => void fetchActiveShiftAndHistory(true)}
           disabled={refreshing}
           className="inline-flex min-h-10 w-fit items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-bold text-neutral-700 shadow-sm transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
         >
@@ -354,7 +392,7 @@ export default function BillingPage() {
               </h2>
               <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-neutral-500">
                 Enter the starting cash float to begin tracking sales and
-                reconciling the drawer.
+                reconciling the drawer for the new day.
               </p>
             </div>
             <form onSubmit={handleOpenShift} className="space-y-4">
@@ -465,10 +503,9 @@ export default function BillingPage() {
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
             <section className="rounded-2xl border border-neutral-200/80 bg-white p-5 shadow-sm sm:p-6">
               <div className="mb-5">
-                <h2 className="text-lg font-black">Close &amp; settle shift</h2>
+                <h2 className="text-lg font-black">Close &amp; settle shift (Day End)</h2>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Count the physical cash, review the difference, then confirm
-                  settlement.
+                  Physical cash count karein aur shift close karein taake daily history freeze ho jaye.
                 </p>
               </div>
 
@@ -527,7 +564,7 @@ export default function BillingPage() {
                 ) : (
                   <Lock className="h-4 w-4" />
                 )}
-                Close shift &amp; settle
+                Close shift &amp; archive day
               </button>
               {!reportReady && (
                 <p className="mt-2 text-xs text-amber-700">
@@ -598,6 +635,66 @@ export default function BillingPage() {
           </div>
         </>
       )}
+
+      {/* Permanent Historical Daily Sales Archive */}
+      <section className="rounded-2xl border border-neutral-200/80 bg-white p-5 shadow-sm sm:p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <History className="h-5 w-5 text-orange-500" />
+          <h2 className="text-lg font-black text-neutral-900">Historical Daily Sales Archive</h2>
+        </div>
+
+        {dailyHistory.length === 0 ? (
+          <p className="text-center py-6 text-xs text-neutral-400">
+            No archived days yet. Close today's shift to create your first permanent record.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-neutral-100 text-neutral-400 font-bold uppercase text-[10px]">
+                  <th className="pb-3">Date</th>
+                  <th className="pb-3">Total Sales</th>
+                  <th className="pb-3">Cash / Card / QR</th>
+                  <th className="pb-3">Orders</th>
+                  <th className="pb-3">Variance</th>
+                  <th className="pb-3">Closed By</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100 font-medium text-neutral-700">
+                {dailyHistory.map((rec) => (
+                  <tr key={rec.id} className="hover:bg-neutral-50/60 transition">
+                    <td className="py-3 font-bold text-neutral-900 flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-neutral-400" />
+                      {rec.record_date}
+                    </td>
+                    <td className="py-3 font-mono font-bold text-orange-600">
+                      {money(rec.total_sales)}
+                    </td>
+                    <td className="py-3 text-[11px] text-neutral-500">
+                      C: {money(rec.cash_sales)} | CD: {money(rec.card_sales)} | QR: {money(rec.qr_sales)}
+                    </td>
+                    <td className="py-3 font-bold">{rec.total_orders} tickets</td>
+                    <td className="py-3 font-mono">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black ${
+                          Number(rec.cash_variance) === 0
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : Number(rec.cash_variance) < 0
+                            ? 'bg-rose-50 text-rose-700'
+                            : 'bg-amber-50 text-amber-700'
+                        }`}
+                      >
+                        {money(rec.cash_variance)}
+                      </span>
+                    </td>
+                    <td className="py-3 text-[11px] text-neutral-500">{rec.closed_by}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </main>
   );
 }
@@ -630,4 +727,3 @@ function ReportRow({ label, value, strong = false }) {
     </div>
   );
 }
-
