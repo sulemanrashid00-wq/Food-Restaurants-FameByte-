@@ -5,11 +5,16 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // 2. Error Guard (Safety check):
-// Agar keys daalna bhool gaye to app crash hone ke bajaye error throw kare:
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Supabase environment variables (URL or Anon Key) are missing!');
 }
 
-// 3. Central Client banana:
-// createClient function dono keys use karke database se live connection link bana deta hai
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// 3. Central Client banana (With Persistent Auth & Realtime Channels):
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: window.localStorage
+  }
+});

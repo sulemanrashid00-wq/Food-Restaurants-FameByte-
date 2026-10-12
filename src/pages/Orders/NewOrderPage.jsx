@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import ThermalReceiptModal from '../../components/Receipt/ThermalReceiptModal';
 import { 
   ShoppingBag, Search, Plus, Minus, Trash2, 
   CreditCard, Banknote, QrCode, Split, 
@@ -22,6 +23,10 @@ export default function NewOrderPage() {
   const [splitCount, setSplitCount] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // VIP Receipt Modal States
+  const [completedOrderForReceipt, setCompletedOrderForReceipt] = useState(null);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
 
   // Parallel Fast Fetch
   const fetchInitialData = useCallback(async () => {
@@ -97,6 +102,8 @@ export default function NewOrderPage() {
 
     setSubmitting(true);
     try {
+      const selectedTableObj = tables.find(t => t.id === selectedTable);
+
       const { data: orderData, error: orderErr } = await supabase
         .from('orders')
         .insert([{
@@ -132,7 +139,22 @@ export default function NewOrderPage() {
           .eq('id', selectedTable);
       }
 
-      alert('Order Placed Successfully! Sent to KDS.');
+      // Format order payload for Instant Thermal Receipt Popup
+      setCompletedOrderForReceipt({
+        ...orderData,
+        order_items: cart.map(it => ({
+          id: it.id,
+          quantity: it.quantity,
+          unit_price: it.price,
+          subtotal: it.price * it.quantity,
+          menu_items: { name: it.name }
+        })),
+        tables: selectedTableObj || null
+      });
+
+      setShowReceiptModal(true);
+
+      // Reset form states
       setCart([]);
       setSelectedTable('');
       setCustomerName('');
@@ -398,6 +420,13 @@ export default function NewOrderPage() {
           <span>Confirm & Send to Kitchen (KDS)</span>
         </button>
       </div>
+
+      {/* 80mm ESC/POS Thermal Receipt Modal Popup */}
+      <ThermalReceiptModal
+        isOpen={showReceiptModal}
+        order={completedOrderForReceipt}
+        onClose={() => setShowReceiptModal(false)}
+      />
     </div>
   );
 }
