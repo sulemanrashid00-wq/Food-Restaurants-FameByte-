@@ -13,7 +13,7 @@ import DashboardPage from './pages/Dashboard/DashboardPage';
 import AnalyticsPage from './pages/Analytics/AnalyticsPage';
 import InventoryPage from './pages/Inventory/InventoryPage';
 import BillingPage from './pages/Billing/BillingPage';
-import CustomerReviewPage from './pages/Review/CustomerReviewPage';
+import CustomerReviewPage from './pages/Customer/CustomerReviewPage';
 
 // Icons
 import { 
