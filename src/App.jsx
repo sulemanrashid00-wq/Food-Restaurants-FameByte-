@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { supabase } from './lib/supabaseClient';
 
 // Pages
 import LoginPage from './pages/Login/LoginPage';
@@ -12,20 +13,161 @@ import DashboardPage from './pages/Dashboard/DashboardPage';
 import AnalyticsPage from './pages/Analytics/AnalyticsPage';
 import InventoryPage from './pages/Inventory/InventoryPage';
 import BillingPage from './pages/Billing/BillingPage';
+import CustomerReviewPage from './pages/Review/CustomerReviewPage';
 
 // Icons
 import { 
   Loader2, Utensils, LayoutDashboard, BookOpen, Star, 
   Truck, BarChart2, Settings, LogOut, Armchair, ShoppingBag, 
-  Clock, Boxes, Vault, Menu, X, CheckCircle2, ShieldCheck, MapPin
+  Clock, Boxes, Vault, Menu, X, CheckCircle2, ShieldCheck, MapPin, QrCode
 } from 'lucide-react';
+
+function LiveReviewsTab() {
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchReviews = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('customer_reviews')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setReviews(data || []);
+    } catch (err) {
+      console.error('Fetch reviews error:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReviews();
+
+    const channel = supabase
+      .channel('customer-reviews-live')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'customer_reviews' },
+        (payload) => {
+          setReviews((prev) => [payload.new, ...prev]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const totalReviews = reviews.length;
+  const avgRating = totalReviews > 0
+    ? (reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) / totalReviews).toFixed(1)
+    : '5.0';
+
+  const reviewUrl = typeof window !== 'undefined' ? `${window.location.origin}/review` : 'https://food-restaurants-fame-byte.vercel.app/review';
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(reviewUrl)}`;
+
+  return (
+    <div className="space-y-6 pb-12">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-black text-neutral-900 tracking-tight">Customer Ratings &amp; Reviews</h2>
+          <p className="text-xs font-medium text-neutral-500">Live guest feedback and satisfaction scorecards.</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white p-5 rounded-3xl border border-neutral-100 shadow-2xs">
+          <p className="text-[10px] font-bold text-neutral-400 uppercase">Average Rating</p>
+          <h3 className="text-2xl font-black text-amber-500 mt-1 flex items-center gap-1.5">
+            {avgRating} <Star className="w-5 h-5 fill-amber-500 text-amber-500" />
+          </h3>
+          <p className="text-[11px] text-neutral-500 mt-1">Based on {totalReviews} live guest reviews</p>
+        </div>
+
+        <div className="bg-white p-5 rounded-3xl border border-neutral-100 shadow-2xs">
+          <p className="text-[10px] font-bold text-neutral-400 uppercase">Total Feedback</p>
+          <h3 className="text-2xl font-black text-emerald-600 mt-1">{totalReviews} Reviews</h3>
+          <p className="text-[11px] text-neutral-500 mt-1">Directly submitted from guest phones</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-3xl border border-neutral-100 shadow-2xs flex items-center gap-4">
+          <img
+            src={qrCodeUrl}
+            alt="Review QR Code"
+            className="w-18 h-18 rounded-xl border border-neutral-100 shadow-2xs object-contain"
+          />
+          <div className="min-w-0 flex-1">
+            <span className="text-[10px] font-black text-orange-600 uppercase bg-orange-50 px-2 py-0.5 rounded-full inline-block">
+              Scan To Review
+            </span>
+            <h4 className="text-xs font-black text-neutral-900 mt-1">Guest Mobile QR</h4>
+            <a
+              href="/review"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[10px] text-neutral-500 underline hover:text-orange-600 block mt-1 truncate"
+            >
+              Open Direct Form ↗
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-3xl p-6 border border-neutral-100 shadow-2xs space-y-4">
+        <h4 className="text-sm font-black text-neutral-900">Recent Guest Feedback</h4>
+
+        {loading ? (
+          <div className="py-10 flex justify-center">
+            <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
+          </div>
+        ) : reviews.length === 0 ? (
+          <p className="text-center py-8 text-xs text-neutral-400">
+            Abhi tak koi live review nahi aaya. Customer QR scan karke submit karega toh foran yahan dikhega.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {reviews.map((rev) => (
+              <div
+                key={rev.id}
+                className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 flex items-start justify-between transition hover:border-neutral-200"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-neutral-900">{rev.customer_name}</span>
+                    {rev.dish_name && (
+                      <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
+                        {rev.dish_name}
+                      </span>
+                    )}
+                    <span className="text-[9px] text-neutral-400">
+                      {rev.created_at ? new Date(rev.created_at).toLocaleDateString() : 'Just now'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-600">{rev.comment}</p>
+                </div>
+
+                <div className="flex items-center gap-0.5 text-amber-500 shrink-0">
+                  {Array.from({ length: Number(rev.rating || 5) }).map((_, i) => (
+                    <Star key={i} className="w-3.5 h-3.5 fill-amber-500" />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ProtectedDashboard() {
   const { user, profile, loading, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // 1. Initial Auth Loading State
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDF7F2] gap-3">
@@ -35,12 +177,10 @@ function ProtectedDashboard() {
     );
   }
 
-  // 2. Strict Auth Guard
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  // Admin Workspace
   if (profile?.role === 'Admin') {
     const navItems = [
       { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -92,7 +232,6 @@ function ProtectedDashboard() {
           md:flex md:w-64 md:h-[calc(100vh-3rem)] md:sticky md:top-6
         `}>
           <div>
-            {/* Desktop Brand Logo */}
             <div className="hidden md:flex items-center gap-3 mb-8 px-2">
               <div className="w-9 h-9 rounded-xl bg-orange-500 text-white flex items-center justify-center font-bold text-base shadow-sm shadow-orange-500/30">
                 D
@@ -103,7 +242,6 @@ function ProtectedDashboard() {
               </div>
             </div>
 
-            {/* Navigation Links */}
             <nav className="space-y-1 text-xs font-semibold overflow-y-auto max-h-[calc(100vh-14rem)] pr-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
@@ -126,7 +264,6 @@ function ProtectedDashboard() {
             </nav>
           </div>
 
-          {/* Admin Profile & Logout Section */}
           <div className="pt-4 border-t border-neutral-100 flex items-center justify-between mt-4">
             <div className="min-w-0 pr-2">
               <p className="text-xs font-bold text-neutral-800 truncate">{profile?.full_name || 'Admin'}</p>
@@ -153,67 +290,14 @@ function ProtectedDashboard() {
           {activeTab === 'billing' && <BillingPage />}
           {activeTab === 'analytics' && <AnalyticsPage />}
 
-          {/* Ratings & Reviews Workspace */}
-          {activeTab === 'reviews' && (
-            <div className="space-y-6 pb-12">
-              <div>
-                <h2 className="text-2xl font-black text-neutral-900 tracking-tight">Customer Ratings & Reviews</h2>
-                <p className="text-xs font-medium text-neutral-500">Live guest feedback and satisfaction scorecards.</p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-white p-5 rounded-3xl border border-neutral-100 shadow-2xs">
-                  <p className="text-[10px] font-bold text-neutral-400 uppercase">Average Rating</p>
-                  <h3 className="text-2xl font-black text-amber-500 mt-1 flex items-center gap-1.5">
-                    4.9 <Star className="w-5 h-5 fill-amber-500 text-amber-500" />
-                  </h3>
-                  <p className="text-[11px] text-neutral-500 mt-1">Based on 142 guest reviews</p>
-                </div>
-                <div className="bg-white p-5 rounded-3xl border border-neutral-100 shadow-2xs">
-                  <p className="text-[10px] font-bold text-neutral-400 uppercase">Food Quality</p>
-                  <h3 className="text-2xl font-black text-emerald-600 mt-1">98%</h3>
-                  <p className="text-[11px] text-neutral-500 mt-1">Positive culinary ratings</p>
-                </div>
-                <div className="bg-white p-5 rounded-3xl border border-neutral-100 shadow-2xs">
-                  <p className="text-[10px] font-bold text-neutral-400 uppercase">Service Speed</p>
-                  <h3 className="text-2xl font-black text-orange-600 mt-1">4.8 / 5.0</h3>
-                  <p className="text-[11px] text-neutral-500 mt-1">Under 15 min prep feedback</p>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-3xl p-6 border border-neutral-100 shadow-2xs space-y-4">
-                <h4 className="text-sm font-black text-neutral-900">Recent Guest Feedback</h4>
-                <div className="space-y-3">
-                  {[
-                    { name: 'Sarah Ahmed', dish: 'Gourmet Beef Burger', comment: 'Crispy bun, perfectly seasoned patty and instant service!', rating: 5 },
-                    { name: 'Zayan Khan', dish: 'Loaded Cheesy Fries', comment: 'Arrived hot within 10 minutes. POS billing was smooth.', rating: 5 },
-                    { name: 'Dr. Bilal', dish: 'Special Club Sandwich', comment: 'Loved the ambiance and receipt printing precision.', rating: 4 },
-                  ].map((rev, idx) => (
-                    <div key={idx} className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 flex items-start justify-between">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-black text-neutral-900">{rev.name}</span>
-                          <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">{rev.dish}</span>
-                        </div>
-                        <p className="text-xs text-neutral-600">{rev.comment}</p>
-                      </div>
-                      <div className="flex items-center gap-0.5 text-amber-500">
-                        {Array.from({ length: rev.rating }).map((_, i) => (
-                          <Star key={i} className="w-3.5 h-3.5 fill-amber-500" />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Live Customer Ratings & Reviews */}
+          {activeTab === 'reviews' && <LiveReviewsTab />}
 
           {/* Delivery Fleet Workspace */}
           {activeTab === 'delivery' && (
             <div className="space-y-6 pb-12">
               <div>
-                <h2 className="text-2xl font-black text-neutral-900 tracking-tight">Delivery Fleet & Riders</h2>
+                <h2 className="text-2xl font-black text-neutral-900 tracking-tight">Delivery Fleet &amp; Riders</h2>
                 <p className="text-xs font-medium text-neutral-500">Manage dispatch logistics, riders and live route assignment.</p>
               </div>
 
@@ -269,7 +353,7 @@ function ProtectedDashboard() {
           {activeTab === 'settings' && (
             <div className="space-y-6 pb-12">
               <div>
-                <h2 className="text-2xl font-black text-neutral-900 tracking-tight">System Configuration & Security</h2>
+                <h2 className="text-2xl font-black text-neutral-900 tracking-tight">System Configuration &amp; Security</h2>
                 <p className="text-xs font-medium text-neutral-500">POS hardware parameters, tax presets, and cloud syncing.</p>
               </div>
 
@@ -277,7 +361,7 @@ function ProtectedDashboard() {
                 <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-4">
                   <div className="flex items-center gap-2 border-b border-neutral-100 pb-3">
                     <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                    <h3 className="text-sm font-black text-neutral-900">Tax & Billing Presets</h3>
+                    <h3 className="text-sm font-black text-neutral-900">Tax &amp; Billing Presets</h3>
                   </div>
                   <div className="space-y-3 text-xs">
                     <div className="flex justify-between items-center">
@@ -298,7 +382,7 @@ function ProtectedDashboard() {
                 <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-2xs space-y-4">
                   <div className="flex items-center gap-2 border-b border-neutral-100 pb-3">
                     <CheckCircle2 className="w-5 h-5 text-orange-500" />
-                    <h3 className="text-sm font-black text-neutral-900">Database & Edge Nodes</h3>
+                    <h3 className="text-sm font-black text-neutral-900">Database &amp; Edge Nodes</h3>
                   </div>
                   <div className="space-y-3 text-xs">
                     <div className="flex justify-between items-center">
@@ -352,6 +436,7 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          <Route path="/review" element={<CustomerReviewPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/*" element={<ProtectedDashboard />} />
         </Routes>
