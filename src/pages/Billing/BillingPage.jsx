@@ -630,3 +630,4 @@ function ReportRow({ label, value, strong = false }) {
     </div>
   );
 }
+
